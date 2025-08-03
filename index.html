@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Procdoc OCR Demo</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      max-width: 800px; 
+      margin: 2em auto; 
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 { 
+      text-align: center; 
+      color: #333;
+      margin-bottom: 30px;
+    }
+    .input-section { 
+      margin-bottom: 20px; 
+      text-align: center;
+    }
+    input[type="file"] {
+      margin-right: 10px;
+      padding: 8px;
+    }
+    button { 
+      padding: 12px 24px; 
+      background: #007bff; 
+      color: white; 
+      border: none; 
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    #result { 
+      white-space: pre-wrap; 
+      border: 1px solid #ddd; 
+      padding: 20px; 
+      margin-top: 20px;
+      background: #f9f9f9;
+      border-radius: 5px;
+      min-height: 100px;
+      font-family: monospace;
+    }
+    .summary-section {
+      background: #e8f4fd;
+      padding: 15px;
+      margin: 10px 0;
+      border-left: 4px solid #007bff;
+      border-radius: 0 5px 5px 0;
+    }
+    .error {
+      background: #ffe6e6;
+      border-left-color: #dc3545;
+      color: #721c24;
+    }
+    .loading {
+      text-align: center;
+      color: #007bff;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🏛️ Procdoc – Tax Document OCR Demo</h1>
+    <p style="text-align: center; color: #666; margin-bottom: 30px;">
+      Upload a tax document (PDF or image) to extract text and get an AI-generated summary
+    </p>
+    
+    <div class="input-section">
+      <input type="file" id="fileInput" accept="image/*,.pdf" />
+      <button id="uploadBtn">Upload & Process</button>
+    </div>
+    
+    <div id="result" class="loading">[Select a file and click "Upload & Process" to begin]</div>
+  </div>
+
+  <script>
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileInput = document.getElementById('fileInput');
+    const resultDiv = document.getElementById('result');
+
+    // Replace with your API Gateway endpoint after deployment
+    const API_URL = "REPLACE_WITH_YOUR_API_URL";
+
+    uploadBtn.onclick = async () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        alert("Please select a file first.");
+        return;
+      }
+
+      // Validate file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        alert("File size must be less than 10MB");
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = "Processing...";
+      resultDiv.className = "loading";
+      resultDiv.textContent = "🔄 Processing your document...\nThis may take 10-30 seconds depending on document complexity.";
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        const binaryString = uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '');
+        const base64Data = btoa(binaryString);
+
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          body: base64Data,
+          headers: { "Content-Type": "application/octet-stream" }
+        });
+        
+        const resultText = await response.text();
+        let resultObj;
+        try {
+          resultObj = JSON.parse(resultText);
+        } catch {
+          resultObj = { error: resultText };
+        }
+
+        if (response.ok && resultObj.extracted_text) {
+          // Format successful result
+          let displayText = "✅ PROCESSING COMPLETE\n\n";
+          
+          if (resultObj.summary && Array.isArray(resultObj.summary)) {
+            displayText += "📋 AI SUMMARY (3 lines):\n";
+            displayText += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+            resultObj.summary.forEach((line, index) => {
+              if (line.trim()) {
+                displayText += `${index + 1}. ${line.trim()}\n`;
+              }
+            });
+            displayText += "\n";
+          }
+          
+          displayText += "📄 EXTRACTED TEXT:\n";
+          displayText += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+          displayText += resultObj.extracted_text;
+          
+          resultDiv.className = "";
+          resultDiv.textContent = displayText;
+        } else {
+          // Handle errors
+          resultDiv.className = "error";
+          resultDiv.textContent = "❌ ERROR: " + (resultObj.error || resultText || "Unknown error occurred");
+        }
+      } catch (err) {
+        console.error("Request failed", err);
+        resultDiv.className = "error";
+        resultDiv.textContent = "❌ NETWORK ERROR: " + err.message + "\n\nPlease check:\n• Internet connection\n• API URL is correct\n• CORS is enabled";
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = "Upload & Process";
+      }
+    };
+
+    // File input change handler
+    fileInput.onchange = () => {
+      if (fileInput.files[0]) {
+        resultDiv.className = "";
+        resultDiv.textContent = `📁 Selected: ${fileInput.files[0].name}\nClick "Upload & Process" to analyze this document.`;
+      }
+    };
+  </script>
+</body>
+</html>
